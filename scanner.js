@@ -150,7 +150,9 @@
   }
 
   async function tick() {
-    if (!stream || video.readyState < 2 || busy) return;
+    if (!stream || busy) return;
+    if (video.paused) { video.play().catch(() => {}); return; } // resume if a dialog or tab switch paused it
+    if (video.readyState < 2) return;
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw) return;
     const scale = DETECT_WIDTH / vw;
@@ -352,8 +354,19 @@
   downloadJpgs.addEventListener('click', () => {
     pages.forEach((p, i) => setTimeout(() => download(p.blob, 'scan-' + stamp() + '-p' + String(i + 1).padStart(3, '0') + '.jpg'), i * 150));
   });
+  // Two-tap confirmation instead of confirm(): a native modal pauses the
+  // camera video on iOS and it never resumes.
+  let clearArmed = null;
   clearAll.addEventListener('click', () => {
-    if (pages.length && confirm('Remove all ' + pages.length + ' scanned pages?')) { pages.forEach(p => URL.revokeObjectURL(p.url)); pages = []; renderGallery(); }
+    if (!pages.length) return;
+    if (clearArmed) {
+      clearTimeout(clearArmed); clearArmed = null;
+      pages.forEach(p => URL.revokeObjectURL(p.url)); pages = []; renderGallery();
+      clearAll.textContent = 'Clear'; setStatus('All pages removed.');
+      return;
+    }
+    clearAll.textContent = 'Tap again to clear ' + pages.length;
+    clearArmed = setTimeout(() => { clearArmed = null; clearAll.textContent = 'Clear'; }, 3000);
   });
 
   captureBtn.addEventListener('click', () => capture(lastCorners));

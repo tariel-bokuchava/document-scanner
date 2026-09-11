@@ -50,7 +50,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
 .lb-bar button.danger{background:#7a2a1f;border-color:#7a2a1f;flex:0 0 auto}
 </style>
 
-<header><h1>Paper Scan</h1><span id="camInfo" class="mono">build 2026-09-11 14:28</span></header>
+<header><h1>Paper Scan</h1><span id="camInfo" class="mono">build 2026-09-11 14:50</span></header>
 
 <div class="viewport">
   <video id="video" autoplay playsinline muted></video>
@@ -847,7 +847,9 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
   }
 
   async function tick() {
-    if (!stream || video.readyState < 2 || busy) return;
+    if (!stream || busy) return;
+    if (video.paused) { video.play().catch(() => {}); return; } // resume if a dialog or tab switch paused it
+    if (video.readyState < 2) return;
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw) return;
     const scale = DETECT_WIDTH / vw;
@@ -1057,8 +1059,19 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
   downloadJpgs.addEventListener('click', () => {
     (async () => { const s = stamp(); for (let i = 0; i < pages.length; i++) await download(pages[i].blob, 'scan-' + s + '-p' + String(i + 1).padStart(3, '0') + '.jpg'); })();
   });
+  // Two-tap confirmation instead of confirm(): a native modal pauses the
+  // camera video on iOS and it never resumes.
+  let clearArmed = null;
   clearAll.addEventListener('click', () => {
-    if (pages.length && confirm('Remove all ' + pages.length + ' scanned pages?')) { pages.forEach(p => URL.revokeObjectURL(p.url)); pages = []; renderGallery(); }
+    if (!pages.length) return;
+    if (clearArmed) {
+      clearTimeout(clearArmed); clearArmed = null;
+      pages.forEach(p => URL.revokeObjectURL(p.url)); pages = []; renderGallery();
+      clearAll.textContent = 'Clear'; setStatus('All pages removed.');
+      return;
+    }
+    clearAll.textContent = 'Tap again to clear ' + pages.length;
+    clearArmed = setTimeout(() => { clearArmed = null; clearAll.textContent = 'Clear'; }, 3000);
   });
 
   captureBtn.addEventListener('click', () => capture(lastCorners));
