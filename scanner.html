@@ -13,6 +13,8 @@
       <label><input type="checkbox" id="autoCapture" checked> Auto-capture</label>
       <label>Page <select id="pageSize"><option value="1.4142" selected>A4 / A-series</option><option value="1.2941">US Letter</option><option value="1.6471">US Legal</option><option value="auto">Auto (estimate)</option></select></label>
       <label>Output <select id="outputMode"><option value="color">Color</option><option value="gray" selected>Grayscale</option><option value="bw">Black &amp; white</option></select></label>
+      <label>Size <select id="compression"><option value="small">Small ~150 KB</option><option value="medium" selected>Medium ~300 KB</option><option value="large">Large ~600 KB</option><option value="max">Max quality</option><option value="custom">Custom…</option></select></label>
+      <span id="customBox" class="custom" hidden><label>Target <input type="number" id="customKB" value="300" min="0" step="50"> KB</label><label>Max <input type="number" id="customPx" value="2200" min="300" step="100"> px</label></span>
       <label><input type="checkbox" id="mirror"> Mirror preview</label>
       <button id="captureBtn" title="Space">Capture now</button>
     </div>

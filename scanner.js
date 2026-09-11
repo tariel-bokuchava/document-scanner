@@ -8,7 +8,6 @@
   const STABLE_TOLERANCE = 0.015;  // corner movement allowed, fraction of frame diagonal
   const CLEAR_FRAMES = 6;          // frames with no page (or a moved page) before re-arming
   const MIN_CAPTURE_GAP_MS = 1500;
-  const JPEG_QUALITY = 0.93;
 
   // ---- DOM ----------------------------------------------------------------
   const $ = (id) => document.getElementById(id);
@@ -16,6 +15,7 @@
   const statusEl = $('status'), flash = $('flash'), gallery = $('gallery');
   const cameraSelect = $('cameraSelect'), autoCapture = $('autoCapture'), mirror = $('mirror');
   const outputMode = $('outputMode'), pageSize = $('pageSize');
+  const compression = $('compression'), customBox = $('customBox'), customKB = $('customKB'), customPx = $('customPx');
   const captureBtn = $('captureBtn'), downloadPdf = $('downloadPdf'), downloadJpgs = $('downloadJpgs'), clearAll = $('clearAll');
   const pageCount = $('pageCount');
 
@@ -174,7 +174,7 @@
       const gone = !corners || cornerDistance(corners, capturedCorners, diag) > 0.12;
       clearCount = gone ? clearCount + 1 : 0;
       drawOverlay(corners, 'rgba(120,120,120,1)', 0);
-      setStatus('Scanned (' + lastCaptureInfo + '). Remove the page and place the next one.', pagePxWarn() ? 'warn' : 'ok');
+      setStatus('Scanned (' + lastCaptureInfo + ', ' + fmtKB(pages[pages.length - 1].blob.size) + '). Remove the page and place the next one.', pagePxWarn() ? 'warn' : 'ok');
       if (clearCount >= CLEAR_FRAMES) { resetPhase('searching'); }
       return;
     }
@@ -217,8 +217,8 @@
       const out = document.createElement('canvas');
       out.width = warped.width; out.height = warped.height;
       out.getContext('2d').putImageData(warped, 0, 0);
-      const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', JPEG_QUALITY));
-      addPage({ blob, url: URL.createObjectURL(blob), width: out.width, height: out.height });
+      const enc = await encodeToTarget(out, compressionSettings());
+      addPage({ blob: enc.blob, url: URL.createObjectURL(enc.blob), width: enc.width, height: enc.height, quality: enc.quality });
 
       beep();
       flash.classList.add('on'); setTimeout(() => flash.classList.remove('on'), 60);
@@ -226,6 +226,48 @@
       capturedCorners = corners;
       resetPhase('armedOff');
     } finally { busy = false; }
+  }
+
+  // ---- Compression --------------------------------------------------------
+  // Presets: target file size in KB and maximum long side in pixels.
+  const COMPRESSION_PRESETS = {
+    small:  { targetKB: 150, maxPx: 1500 },
+    medium: { targetKB: 300, maxPx: 2200 },
+    large:  { targetKB: 600, maxPx: 2800 },
+    max:    { targetKB: 0,   maxPx: 3000 },   // 0 = no size limit
+  };
+  function compressionSettings() {
+    if (compression.value === 'custom') {
+      return { targetKB: Math.max(0, parseInt(customKB.value, 10) || 0), maxPx: Math.max(300, parseInt(customPx.value, 10) || 2200) };
+    }
+    return COMPRESSION_PRESETS[compression.value] || COMPRESSION_PRESETS.medium;
+  }
+  compression.addEventListener('change', () => { customBox.hidden = compression.value !== 'custom'; });
+
+  const toJpeg = (canvas, q) => new Promise(r => canvas.toBlob(r, 'image/jpeg', q));
+  function scaleCanvas(src, f) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(src.width * f)); c.height = Math.max(1, Math.round(src.height * f));
+    const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(src, 0, 0, c.width, c.height);
+    return c;
+  }
+  // Encode as JPEG under targetKB: first cap the pixel size, then lower quality in steps,
+  // then shrink the image and repeat. Returns { blob, width, height, quality }.
+  async function encodeToTarget(canvas, { targetKB, maxPx }) {
+    let c = canvas;
+    const long = Math.max(c.width, c.height);
+    if (long > maxPx) c = scaleCanvas(c, maxPx / long);
+    if (!targetKB) { const blob = await toJpeg(c, 0.93); return { blob, width: c.width, height: c.height, quality: 0.93 }; }
+    const limit = targetKB * 1024;
+    const qualities = [0.85, 0.78, 0.7, 0.62, 0.55, 0.48, 0.42];
+    for (let round = 0; round < 6; round++) {
+      let blob = null, q = 0;
+      for (q of qualities) { blob = await toJpeg(c, q); if (blob.size <= limit) return { blob, width: c.width, height: c.height, quality: q }; }
+      if (Math.max(c.width, c.height) <= 600) return { blob, width: c.width, height: c.height, quality: q };
+      c = scaleCanvas(c, 0.85);
+    }
+    const blob = await toJpeg(c, 0.42);
+    return { blob, width: c.width, height: c.height, quality: 0.42 };
   }
 
   // Prefer a full-sensor still (sharper, higher resolution than the video stream); fall back to the video frame.
@@ -252,7 +294,7 @@
     pages.forEach((p, i) => {
       const div = document.createElement('div'); div.className = 'page';
       const img = document.createElement('img'); img.src = p.url; img.alt = 'Page ' + (i + 1);
-      const num = document.createElement('span'); num.className = 'num'; num.textContent = i + 1;
+      const num = document.createElement('span'); num.className = 'num'; num.textContent = (i + 1) + ' · ' + fmtKB(p.blob.size);
       const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕'; del.title = 'Remove page';
       del.addEventListener('click', () => removePage(i));
       div.append(img, num, del); gallery.appendChild(div);
@@ -262,6 +304,7 @@
     downloadPdf.disabled = downloadJpgs.disabled = clearAll.disabled = pages.length === 0;
   }
 
+  function fmtKB(bytes) { return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.round(bytes / 1024) + ' KB'; }
   function stamp() { return new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19); }
   function download(blob, name) {
     const a = document.createElement('a');
