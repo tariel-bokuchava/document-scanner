@@ -14,24 +14,36 @@ video,#overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:conta
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
 #flash.on{opacity:.85;transition:none}
 #startBtn{position:absolute;inset:0;margin:auto;width:200px;height:56px;font:inherit;font-weight:600;font-size:16px;border:0;border-radius:28px;background:var(--btn);color:var(--btnink)}
-.status{padding:8px 16px;font-size:14px;color:var(--muted);min-height:36px}
+.status{padding:8px 16px;font-size:16px;color:var(--muted);min-height:40px}
 .status.ok{color:var(--ok)}.status.warn{color:var(--warn)}
-.bar{display:flex;gap:8px;padding:6px 12px;flex-wrap:wrap;align-items:center}
-.bar label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
-select,button{font:inherit;font-size:14px;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+.bar{display:flex;gap:10px;padding:8px 12px;flex-wrap:wrap;align-items:center}
+.bar label{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--muted);min-height:48px;flex:1 1 45%}
+.bar label.auto{flex:0 0 auto}
+.bar select{flex:1;min-width:0}
+.bar input[type=checkbox]{width:24px;height:24px}
+#captureBtn{flex:1 1 100%;font-size:19px;min-height:56px}
+select,button{font:inherit;font-size:17px;min-height:48px;padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
 button:disabled{opacity:.4}
 button.primary{background:var(--btn);color:var(--btnink);border-color:transparent;font-weight:600}
 .pages{padding:8px 12px 24px}
 .pages-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
 .pages-head h2{font-size:14px;font-weight:600;margin:0}
-.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
-.page{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.page{position:relative;cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px}
 .page img{width:100%;display:block;border-radius:3px}
-.page .num{position:absolute;top:6px;left:6px;font-family:"IBM Plex Mono",monospace;font-size:11px;background:rgba(0,0,0,.65);color:#fff;padding:1px 5px;border-radius:3px}
-.page .del{position:absolute;top:4px;right:4px;padding:0 6px;font-size:12px;line-height:20px}
-.hint{padding:0 16px 16px;font-size:13px;color:var(--muted);max-width:60ch}
+.page .num{position:absolute;top:8px;left:8px;font-family:"IBM Plex Mono",monospace;font-size:13px;background:rgba(0,0,0,.65);color:#fff;padding:2px 7px;border-radius:4px}
+.page .del{position:absolute;top:6px;right:6px;min-height:40px;padding:0 14px;font-size:16px;line-height:40px}
+.hint{padding:0 16px 16px;font-size:14px;color:var(--muted);max-width:60ch}
 button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){#flash{transition:none}}
+.lb{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;z-index:10}
+.lb[hidden]{display:none}
+.lb-img{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;touch-action:pan-y pinch-zoom}
+.lb-img img{max-width:100%;max-height:100%;object-fit:contain}
+.lb-bar{display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#111;align-items:center}
+.lb-bar button{background:#2a2d33;color:#fff;border-color:#3a3d44;flex:1}
+.lb-bar .mono{color:#bbb;flex:0 0 auto;font-size:15px}
+.lb-bar button.danger{background:#7a2a1f;border-color:#7a2a1f;flex:0 0 auto}
 </style>
 
 <header><h1>Paper Scan</h1><span id="camInfo" class="mono">camera off</span></header>
@@ -46,7 +58,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
 
 <div class="bar">
   <button id="captureBtn" class="primary" disabled>Capture</button>
-  <label><input type="checkbox" id="autoCapture" checked> Auto</label>
+  <label class="auto"><input type="checkbox" id="autoCapture" checked> Auto</label>
   <label>Page <select id="pageSize"><option value="1.4142" selected>A4</option><option value="1.2941">Letter</option><option value="1.6471">Legal</option><option value="auto">Auto</option></select></label>
   <label>Output <select id="outputMode"><option value="color">Color</option><option value="gray" selected>Gray</option><option value="bw">B&amp;W</option></select></label>
   <label>Camera <select id="cameraSelect"></select></label>
@@ -63,7 +75,18 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
   </div>
   <div id="gallery" class="gallery"></div>
 </section>
-<p class="hint">Put the page on a darker surface, fill the frame with it, and hold still until the ring closes. A beep confirms each scan; lift the page and place the next. On iPhone the PDF opens in a new tab: use Share to save it.</p>
+<p class="hint">Put the page on a darker surface, fill the frame with it, and hold still until the ring closes. A beep confirms each scan; lift the page and place the next. Tap a page to view it full size; swipe to move between pages.</p>
+
+<div id="lightbox" class="lb" hidden>
+  <div class="lb-img"><img id="lbImg" alt="Scanned page"></div>
+  <div class="lb-bar">
+    <button id="lbPrev">‹ Prev</button>
+    <span id="lbLabel" class="mono">1 / 1</span>
+    <button id="lbNext">Next ›</button>
+    <button id="lbDelete" class="danger">Delete</button>
+    <button id="lbClose">Close</button>
+  </div>
+</div>
 
 <script>// Pure-JS document detector. Works on a downscaled frame.
 // Strategy: the paper is assumed to be the largest bright region in view
@@ -913,6 +936,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
       const num = document.createElement('span'); num.className = 'num'; num.textContent = i + 1;
       const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕'; del.title = 'Remove page';
       del.addEventListener('click', () => removePage(i));
+      img.addEventListener('click', () => openLightbox(i));
       div.append(img, num, del); gallery.appendChild(div);
     });
     gallery.scrollTop = gallery.scrollHeight;
@@ -952,6 +976,36 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
     if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
     if (e.code === 'Space') { e.preventDefault(); capture(lastCorners); }
     if (e.key === 'Delete' || e.key === 'Backspace') { if (pages.length) removePage(pages.length - 1); }
+  });
+
+  // ---- Lightbox preview --------------------------------------------------
+  const lightbox = $('lightbox'), lbImg = $('lbImg'), lbLabel = $('lbLabel');
+  let lbIndex = 0;
+  function openLightbox(i) { lbIndex = i; renderLightbox(); lightbox.hidden = false; }
+  function closeLightbox() { lightbox.hidden = true; }
+  function renderLightbox() {
+    if (!pages.length) { closeLightbox(); return; }
+    lbIndex = Math.max(0, Math.min(pages.length - 1, lbIndex));
+    const p = pages[lbIndex];
+    lbImg.src = p.url;
+    lbLabel.textContent = (lbIndex + 1) + ' / ' + pages.length + '  ' + p.width + '×' + p.height;
+  }
+  $('lbPrev').addEventListener('click', () => { lbIndex--; renderLightbox(); });
+  $('lbNext').addEventListener('click', () => { lbIndex++; renderLightbox(); });
+  $('lbClose').addEventListener('click', closeLightbox);
+  $('lbDelete').addEventListener('click', () => { removePage(lbIndex); renderLightbox(); });
+  let touchX = null;
+  lightbox.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
+  lightbox.addEventListener('touchend', e => {
+    if (touchX === null) return;
+    const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+    if (Math.abs(dx) > 50) { lbIndex += dx < 0 ? 1 : -1; renderLightbox(); }
+  });
+  document.addEventListener('keydown', e => {
+    if (lightbox.hidden) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') { lbIndex--; renderLightbox(); }
+    if (e.key === 'ArrowRight') { lbIndex++; renderLightbox(); }
   });
 
   // ---- Boot ---------------------------------------------------------------
