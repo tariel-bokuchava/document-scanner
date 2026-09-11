@@ -362,11 +362,12 @@
     if (clearArmed) {
       clearTimeout(clearArmed); clearArmed = null;
       pages.forEach(p => URL.revokeObjectURL(p.url)); pages = []; renderGallery();
-      clearAll.textContent = 'Clear'; setStatus('All pages removed.');
+      clearAll.textContent = 'Clear'; clearAll.classList.remove('armed'); setStatus('All pages removed.');
       return;
     }
-    clearAll.textContent = 'Tap again to clear ' + pages.length;
-    clearArmed = setTimeout(() => { clearArmed = null; clearAll.textContent = 'Clear'; }, 3000);
+    clearAll.textContent = 'Confirm clear'; clearAll.classList.add('armed');
+    setStatus('Tap "Confirm clear" to remove all ' + pages.length + ' page(s).', 'warn');
+    clearArmed = setTimeout(() => { clearArmed = null; clearAll.textContent = 'Clear'; clearAll.classList.remove('armed'); setStatus(''); }, 4000);
   });
 
   captureBtn.addEventListener('click', () => capture(lastCorners));
