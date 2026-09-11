@@ -50,7 +50,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
 .lb-bar button.danger{background:#7a2a1f;border-color:#7a2a1f;flex:0 0 auto}
 </style>
 
-<header><h1>Paper Scan</h1><span id="camInfo" class="mono">camera off</span></header>
+<header><h1>Paper Scan</h1><span id="camInfo" class="mono">build 2026-09-11 14:28</span></header>
 
 <div class="viewport">
   <video id="video" autoplay playsinline muted></video>
@@ -1020,6 +1020,11 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
+  function buildPdfBlob() {
+    const blob = MiniPdf.buildPdf(pages.map(p => ({ jpeg: p.bytes, width: p.width, height: p.height })));
+    setStatus('PDF ready: ' + pages.length + ' page(s), ' + fmtKB(blob.size));
+    return blob;
+  }
   downloadPdf.addEventListener('click', () => {
     try { download(buildPdfBlob(), 'scan-' + stamp() + '.pdf'); }
     catch (e) { setStatus('PDF failed: ' + e.message, 'warn'); }
