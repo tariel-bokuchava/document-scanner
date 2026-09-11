@@ -46,6 +46,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
 .lb-bar{display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#111;align-items:center}
 .lb-bar button{background:#2a2d33;color:#fff;border-color:#3a3d44;flex:1}
 .lb-bar .mono{color:#bbb;flex:0 0 auto;font-size:15px}
+.lb-bar button.primary{background:var(--btn);color:var(--btnink)}
 .lb-bar button.danger{background:#7a2a1f;border-color:#7a2a1f;flex:0 0 auto}
 </style>
 
@@ -73,8 +74,10 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
   <div class="pages-head">
     <h2>Pages <span id="pageCount" class="mono">0</span></h2>
     <div class="bar" style="padding:0">
-      <button id="downloadPdf" disabled>PDF</button>
-      <button id="downloadJpgs" disabled>JPEGs</button>
+      <button id="sharePdf" class="share-only primary" disabled hidden>Share PDF</button>
+      <button id="shareJpgs" class="share-only" disabled hidden>Share JPEGs</button>
+      <button id="downloadPdf" disabled>Save PDF</button>
+      <button id="downloadJpgs" disabled>Save JPEGs</button>
       <button id="clearAll" disabled>Clear</button>
     </div>
   </div>
@@ -88,6 +91,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
     <button id="lbPrev">‹ Prev</button>
     <span id="lbLabel" class="mono">1 / 1</span>
     <button id="lbNext">Next ›</button>
+    <button id="lbShare" class="share-only" hidden>Share</button>
     <button id="lbDelete" class="danger">Delete</button>
     <button id="lbClose">Close</button>
   </div>
@@ -911,7 +915,8 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
       out.width = warped.width; out.height = warped.height;
       out.getContext('2d').putImageData(warped, 0, 0);
       const enc = await encodeToTarget(out, compressionSettings());
-      addPage({ blob: enc.blob, url: URL.createObjectURL(enc.blob), width: enc.width, height: enc.height, quality: enc.quality });
+      const bytes = new Uint8Array(await enc.blob.arrayBuffer()); // kept so sharing/PDF can run synchronously inside a tap
+      addPage({ blob: enc.blob, bytes, url: URL.createObjectURL(enc.blob), width: enc.width, height: enc.height, quality: enc.quality });
 
       beep();
       flash.classList.add('on'); setTimeout(() => flash.classList.remove('on'), 60);
@@ -996,6 +1001,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
     gallery.scrollTop = gallery.scrollHeight;
     pageCount.textContent = pages.length;
     downloadPdf.disabled = downloadJpgs.disabled = clearAll.disabled = pages.length === 0;
+    if (sharePdf) sharePdf.disabled = shareJpgs.disabled = pages.length === 0;
   }
 
   function fmtKB(bytes) { return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.round(bytes / 1024) + ' KB'; }
@@ -1014,11 +1020,30 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
-  downloadPdf.addEventListener('click', async () => {
-    const pdfPages = [];
-    for (const p of pages) pdfPages.push({ jpeg: new Uint8Array(await p.blob.arrayBuffer()), width: p.width, height: p.height });
-    download(MiniPdf.buildPdf(pdfPages), 'scan-' + stamp() + '.pdf');
+  downloadPdf.addEventListener('click', () => download(buildPdfBlob(), 'scan-' + stamp() + '.pdf'));
+
+  // ---- Share (Web Share API: iOS/Android share sheet, no file saved first) --
+  const canShareFiles = !!(navigator.share && navigator.canShare &&
+    navigator.canShare({ files: [new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], 't.jpg', { type: 'image/jpeg' })] }));
+  function shareFiles(files, title) {
+    // Must be called synchronously from the tap; no awaits before navigator.share.
+    if (!navigator.canShare({ files })) { setStatus('This browser cannot share these files.', 'warn'); return; }
+    navigator.share({ files, title }).then(() => setStatus('Shared.', 'ok'))
+      .catch(e => { if (e.name !== 'AbortError') setStatus('Share failed: ' + e.message, 'warn'); });
+  }
+  const sharePdf = $('sharePdf'), shareJpgs = $('shareJpgs');
+  if (sharePdf) sharePdf.addEventListener('click', () => {
+    shareFiles([new File([buildPdfBlob()], 'scan-' + stamp() + '.pdf', { type: 'application/pdf' })], 'Scanned document');
   });
+  if (shareJpgs) shareJpgs.addEventListener('click', () => {
+    const s = stamp();
+    shareFiles(pages.map((p, i) => new File([p.blob], 'scan-' + s + '-p' + String(i + 1).padStart(3, '0') + '.jpg', { type: 'image/jpeg' })), 'Scanned pages');
+  });
+  function sharePage(i) {
+    const p = pages[i];
+    shareFiles([new File([p.blob], 'scan-' + stamp() + '-p' + String(i + 1).padStart(3, '0') + '.jpg', { type: 'image/jpeg' })], 'Scanned page ' + (i + 1));
+  }
+  document.querySelectorAll('.share-only').forEach(el => { el.hidden = !canShareFiles; });
   downloadJpgs.addEventListener('click', () => {
     (async () => { const s = stamp(); for (let i = 0; i < pages.length; i++) await download(pages[i].blob, 'scan-' + s + '-p' + String(i + 1).padStart(3, '0') + '.jpg'); })();
   });
@@ -1048,6 +1073,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
   $('lbPrev').addEventListener('click', () => { lbIndex--; renderLightbox(); });
   $('lbNext').addEventListener('click', () => { lbIndex++; renderLightbox(); });
   $('lbClose').addEventListener('click', closeLightbox);
+  $('lbShare').addEventListener('click', () => sharePage(lbIndex));
   $('lbDelete').addEventListener('click', () => { removePage(lbIndex); renderLightbox(); });
   let touchX = null;
   lightbox.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });

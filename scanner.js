@@ -218,7 +218,8 @@
       out.width = warped.width; out.height = warped.height;
       out.getContext('2d').putImageData(warped, 0, 0);
       const enc = await encodeToTarget(out, compressionSettings());
-      addPage({ blob: enc.blob, url: URL.createObjectURL(enc.blob), width: enc.width, height: enc.height, quality: enc.quality });
+      const bytes = new Uint8Array(await enc.blob.arrayBuffer()); // kept so sharing/PDF can run synchronously inside a tap
+      addPage({ blob: enc.blob, bytes, url: URL.createObjectURL(enc.blob), width: enc.width, height: enc.height, quality: enc.quality });
 
       beep();
       flash.classList.add('on'); setTimeout(() => flash.classList.remove('on'), 60);
@@ -302,6 +303,7 @@
     gallery.scrollTop = gallery.scrollHeight;
     pageCount.textContent = pages.length;
     downloadPdf.disabled = downloadJpgs.disabled = clearAll.disabled = pages.length === 0;
+    if (sharePdf) sharePdf.disabled = shareJpgs.disabled = pages.length === 0;
   }
 
   function fmtKB(bytes) { return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.round(bytes / 1024) + ' KB'; }
@@ -313,11 +315,31 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
-  downloadPdf.addEventListener('click', async () => {
-    const pdfPages = [];
-    for (const p of pages) pdfPages.push({ jpeg: new Uint8Array(await p.blob.arrayBuffer()), width: p.width, height: p.height });
-    download(MiniPdf.buildPdf(pdfPages), 'scan-' + stamp() + '.pdf');
+  function buildPdfBlob() { return MiniPdf.buildPdf(pages.map(p => ({ jpeg: p.bytes, width: p.width, height: p.height }))); }
+  downloadPdf.addEventListener('click', () => download(buildPdfBlob(), 'scan-' + stamp() + '.pdf'));
+
+  // ---- Share (Web Share API: iOS/Android share sheet, no file saved first) --
+  const canShareFiles = !!(navigator.share && navigator.canShare &&
+    navigator.canShare({ files: [new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], 't.jpg', { type: 'image/jpeg' })] }));
+  function shareFiles(files, title) {
+    // Must be called synchronously from the tap; no awaits before navigator.share.
+    if (!navigator.canShare({ files })) { setStatus('This browser cannot share these files.', 'warn'); return; }
+    navigator.share({ files, title }).then(() => setStatus('Shared.', 'ok'))
+      .catch(e => { if (e.name !== 'AbortError') setStatus('Share failed: ' + e.message, 'warn'); });
+  }
+  const sharePdf = $('sharePdf'), shareJpgs = $('shareJpgs');
+  if (sharePdf) sharePdf.addEventListener('click', () => {
+    shareFiles([new File([buildPdfBlob()], 'scan-' + stamp() + '.pdf', { type: 'application/pdf' })], 'Scanned document');
   });
+  if (shareJpgs) shareJpgs.addEventListener('click', () => {
+    const s = stamp();
+    shareFiles(pages.map((p, i) => new File([p.blob], 'scan-' + s + '-p' + String(i + 1).padStart(3, '0') + '.jpg', { type: 'image/jpeg' })), 'Scanned pages');
+  });
+  function sharePage(i) {
+    const p = pages[i];
+    shareFiles([new File([p.blob], 'scan-' + stamp() + '-p' + String(i + 1).padStart(3, '0') + '.jpg', { type: 'image/jpeg' })], 'Scanned page ' + (i + 1));
+  }
+  document.querySelectorAll('.share-only').forEach(el => { el.hidden = !canShareFiles; });
   downloadJpgs.addEventListener('click', () => {
     pages.forEach((p, i) => setTimeout(() => download(p.blob, 'scan-' + stamp() + '-p' + String(i + 1).padStart(3, '0') + '.jpg'), i * 150));
   });
