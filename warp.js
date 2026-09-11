@@ -200,10 +200,17 @@
     const amount = 1.0;
 
     if (mode === 'color') {
+      // Automatic white balance: the paper is white, so normalise each channel
+      // by its own local paper brightness. This removes colour casts from the
+      // camera's white balance and room lighting along with the shading.
+      const R = new Float32Array(n), G = new Float32Array(n), B = new Float32Array(n);
+      for (let i = 0, j = 0; i < n; i++, j += 4) { R[i] = d[j]; G[i] = d[j + 1]; B[i] = d[j + 2]; }
+      const bgR = backgroundField(R, w, h), bgG = backgroundField(G, w, h), bgB = backgroundField(B, w, h);
       for (let i = 0, j = 0; i < n; i++, j += 4) {
         const sharp = 1 + amount * (L[i] - blurred[i]) / Math.max(1, L[i]);
-        const g = gain[i] * sharp;
-        d[j] = Math.min(255, d[j] * g); d[j + 1] = Math.min(255, d[j + 1] * g); d[j + 2] = Math.min(255, d[j + 2] * g);
+        d[j]     = Math.min(255, d[j]     * (target / Math.max(40, bgR[i])) * sharp);
+        d[j + 1] = Math.min(255, d[j + 1] * (target / Math.max(40, bgG[i])) * sharp);
+        d[j + 2] = Math.min(255, d[j + 2] * (target / Math.max(40, bgB[i])) * sharp);
       }
       return contrastStretch(img);
     }
