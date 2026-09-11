@@ -315,21 +315,30 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
-  function buildPdfBlob() { return MiniPdf.buildPdf(pages.map(p => ({ jpeg: p.bytes, width: p.width, height: p.height }))); }
-  downloadPdf.addEventListener('click', () => download(buildPdfBlob(), 'scan-' + stamp() + '.pdf'));
+  function buildPdfBlob() {
+    const blob = MiniPdf.buildPdf(pages.map(p => ({ jpeg: p.bytes, width: p.width, height: p.height })));
+    setStatus('PDF ready: ' + pages.length + ' page(s), ' + fmtKB(blob.size));
+    return blob;
+  }
+  downloadPdf.addEventListener('click', () => {
+    try { download(buildPdfBlob(), 'scan-' + stamp() + '.pdf'); }
+    catch (e) { setStatus('PDF failed: ' + e.message, 'warn'); }
+  });
 
   // ---- Share (Web Share API: iOS/Android share sheet, no file saved first) --
   const canShareFiles = !!(navigator.share && navigator.canShare &&
     navigator.canShare({ files: [new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], 't.jpg', { type: 'image/jpeg' })] }));
   function shareFiles(files, title) {
     // Must be called synchronously from the tap; no awaits before navigator.share.
-    if (!navigator.canShare({ files })) { setStatus('This browser cannot share these files.', 'warn'); return; }
-    navigator.share({ files, title }).then(() => setStatus('Shared.', 'ok'))
-      .catch(e => { if (e.name !== 'AbortError') setStatus('Share failed: ' + e.message, 'warn'); });
+    try {
+      navigator.share({ files, title }).then(() => setStatus('Shared.', 'ok'))
+        .catch(e => { if (e.name !== 'AbortError') setStatus('Share failed: ' + e.name + ' ' + e.message, 'warn'); });
+    } catch (e) { setStatus('Share failed: ' + e.message, 'warn'); }
   }
   const sharePdf = $('sharePdf'), shareJpgs = $('shareJpgs');
   if (sharePdf) sharePdf.addEventListener('click', () => {
-    shareFiles([new File([buildPdfBlob()], 'scan-' + stamp() + '.pdf', { type: 'application/pdf' })], 'Scanned document');
+    try { shareFiles([new File([buildPdfBlob()], 'scan-' + stamp() + '.pdf', { type: 'application/pdf' })], 'Scanned document'); }
+    catch (e) { setStatus('PDF failed: ' + e.message, 'warn'); }
   });
   if (shareJpgs) shareJpgs.addEventListener('click', () => {
     const s = stamp();
@@ -353,6 +362,9 @@
     if (e.code === 'Space') { e.preventDefault(); capture(lastCorners); }
     if (e.key === 'Delete' || e.key === 'Backspace') { if (pages.length) removePage(pages.length - 1); }
   });
+
+  window.addEventListener('error', e => setStatus('Error: ' + e.message, 'warn'));
+  window.addEventListener('unhandledrejection', e => setStatus('Error: ' + (e.reason && e.reason.message || e.reason), 'warn'));
 
   // ---- Boot ---------------------------------------------------------------
   (async function boot() {
